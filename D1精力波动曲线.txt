@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>平衡象限 - 精力波动记录曲线</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
+        
+        body { 
+            font-family: 'Noto Sans SC', sans-serif; 
+            background-color: #f8fafc;
+            color: #1e293b;
+        }
+
+        /* 渐变背景样式 */
+        .gradient-bg {
+            background: linear-gradient(135deg, #eff6ff 0%, #ffffff 50%, #fff1f2 100%);
+        }
+
+        .glass-card { 
+            background: rgba(255, 255, 255, 0.95); 
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(226, 232, 240, 0.8);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
+        }
+
+        .energy-slider {
+            -webkit-appearance: none;
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 10px;
+            outline: none;
+        }
+
+        .energy-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 24px;
+            height: 24px;
+            background: #2563eb;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 4px solid white;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: all 0.2s;
+        }
+
+        .energy-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.1);
+            background: #1d4ed8;
+        }
+
+        @media print {
+            .no-print { display: none !important; }
+        }
+
+        .logo-box {
+            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+        }
+    </style>
+</head>
+<body class="p-4 md:p-10 gradient-bg min-h-screen">
+    <div id="capture-area" class="max-w-6xl mx-auto">
+        <!-- 头部：品牌与标题 -->
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-6">
+            <div class="flex items-center gap-4">
+                <div class="logo-box p-3 rounded-2xl shadow-lg text-white">
+                    <!-- 平衡象限 Logo -->
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="2" x2="12" y2="22"></line>
+                        <line x1="2" y1="12" x2="22" y2="12"></line>
+                        <circle cx="12" cy="12" r="3" fill="currentColor"></circle>
+                        <path d="M16 16l4 4M8 8l-4-4M16 8l4-4M8 16l-4 4"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-3xl font-black text-slate-800 tracking-tight">平衡象限</h1>
+                    <p class="text-sm text-blue-600 font-bold uppercase tracking-widest opacity-80">Energy Management Lab</p>
+                </div>
+            </div>
+            
+            <div class="no-print flex gap-3">
+                <button onclick="downloadPDF()" class="group flex items-center gap-3 bg-slate-900 hover:bg-black text-white px-6 py-3 rounded-2xl text-sm font-bold transition-all shadow-xl active:scale-95">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>
+                    导出 PDF 诊断报告
+                </button>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <!-- 记录区 -->
+            <div class="no-print lg:col-span-4 space-y-6">
+                <div class="glass-card p-8 rounded-3xl">
+                    <div class="flex items-center justify-between mb-8">
+                        <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">
+                            <span id="dayTitle">Day 1</span> 实验室记录表
+                        </h2>
+                        <div class="flex gap-1" id="miniDots"></div>
+                    </div>
+                    
+                    <div id="inputsContainer" class="space-y-8">
+                        <!-- JS 注入 -->
+                    </div>
+                    
+                    <button onclick="saveData()" class="w-full mt-10 bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-2xl transition-all shadow-blue-200 shadow-2xl active:scale-95">
+                        保存今日实验数据
+                    </button>
+                </div>
+
+                <!-- 底部导航页码 -->
+                <div class="flex justify-between items-center px-2">
+                    <div class="flex gap-2 overflow-x-auto py-2" id="dayNav"></div>
+                </div>
+            </div>
+
+            <!-- 可视化展示区 -->
+            <div class="lg:col-span-8">
+                <div class="glass-card p-10 rounded-[2.5rem] relative overflow-hidden h-full flex flex-col">
+                    <div class="flex justify-between items-start mb-10 relative z-10">
+                        <div>
+                            <h2 class="text-2xl font-black text-slate-800 tracking-tight">精力波动记录曲线</h2>
+                            <p class="text-sm text-slate-400 mt-1 uppercase font-medium">Energy Fluctuation Baseline</p>
+                        </div>
+                        <div class="text-right no-print">
+                            <button onclick="resetData()" class="text-[10px] text-slate-300 hover:text-red-500 font-bold uppercase tracking-widest transition-colors">Clear All Data</button>
+                        </div>
+                    </div>
+
+                    <!-- 图表容器：背景色彩过渡由 ChartJS 插件处理 -->
+                    <div class="relative flex-grow min-h-[400px] z-10">
+                        <canvas id="mainChart"></canvas>
+                    </div>
+
+                    <!-- 动态诊断区 -->
+                    <div class="mt-10 p-6 bg-slate-50 rounded-3xl border border-slate-100 relative z-10">
+                        <div class="flex items-center gap-3 mb-4">
+                            <span class="flex h-3 w-3 relative">
+                                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                <span class="relative inline-flex rounded-full h-3 w-3 bg-blue-600"></span>
+                            </span>
+                            <h3 class="text-xs font-black text-slate-500 uppercase tracking-widest">系统实时诊断 / Real-time Insights</h3>
+                        </div>
+                        <p id="analysisText" class="text-slate-600 leading-relaxed font-medium italic">
+                            正在收集中... 请像科学家一样连续记录3天以上，系统将为您揭示隐藏在日常背后的能量损耗规律。
+                        </p>
+                    </div>
+                    
+                    <!-- 水印插图 -->
+                    <div class="absolute bottom-[-50px] right-[-50px] opacity-[0.03] pointer-events-none">
+                        <svg width="400" height="400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="2" x2="12" y2="22"></line>
+                            <line x1="2" y1="12" x2="22" y2="12"></line>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 导出 PDF 时显示的页脚 -->
+        <footer id="export-footer" class="hidden mt-12 border-t border-slate-100 pt-8 flex justify-between items-center text-slate-400 text-xs">
+            <div class="flex items-center gap-2">
+                <strong class="text-slate-600 font-bold">平衡象限</strong> 职场能量管理系统 · 个人诊断报告
+            </div>
+            <div id="timestamp"></div>
+        </footer>
+    </div>
+
+    <script>
+        const TIME_LABELS = ["08:00", "11:00", "15:00", "19:00", "22:00"];
+        const TIME_DESC = ["起", "午", "茶", "晚", "眠"];
+        let currentDay = 1;
+        let storage = JSON.parse(localStorage.getItem('balance_energy_v2')) || {};
+        let myChart = null;
+
+        // 初始化
+        window.onload = () => {
+            renderDayNav();
+            loadDay(1);
+            initChart();
+            updateAnalysis();
+        };
+
+        function renderDayNav() {
+            const nav = document.getElementById('dayNav');
+            nav.innerHTML = '';
+            for(let i=1; i<=7; i++) {
+                const active = currentDay === i;
+                const recorded = !!storage[i];
+                const btn = document.createElement('button');
+                btn.className = `flex-shrink-0 w-12 h-12 rounded-2xl font-bold transition-all border-2 
+                    ${active ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : (recorded ? 'bg-white border-blue-100 text-blue-500' : 'bg-white border-slate-100 text-slate-300')}`;
+                btn.innerText = i;
+                btn.onclick = () => loadDay(i);
+                nav.appendChild(btn);
+            }
+        }
+
+        function loadDay(day) {
+            currentDay = day;
+            document.getElementById('dayTitle').innerText = `Day ${day}`;
+            renderDayNav();
+            
+            const container = document.getElementById('inputsContainer');
+            container.innerHTML = '';
+            
+            const dayData = storage[day] || Array(5).fill({score: 5, note: ""});
+
+            TIME_LABELS.forEach((time, idx) => {
+                const data = dayData[idx] || {score: 5, note: ""};
+                const div = document.createElement('div');
+                div.className = "group";
+                div.innerHTML = `
+                    <div class="flex justify-between items-end mb-2">
+                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">${time} (${TIME_DESC[idx]})</label>
+                        <span class="text-lg font-black text-blue-600" id="val-${idx}">${data.score} <small class="text-[10px] opacity-40">pts</small></span>
+                    </div>
+                    <input type="range" min="1" max="10" value="${data.score}" class="w-full energy-slider mb-3" oninput="updateUI(${idx}, this.value)">
+                    <input type="text" placeholder="录入核心客观事件..." value="${data.note}" id="note-${idx}"
+                        class="w-full text-xs py-2 bg-transparent border-b border-slate-100 focus:border-blue-500 outline-none transition-all placeholder:text-slate-200">
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function updateUI(idx, val) {
+            document.getElementById(`val-${idx}`).innerHTML = `${val} <small class="text-[10px] opacity-40">pts</small>`;
+        }
+
+        function saveData() {
+            const data = [];
+            TIME_LABELS.forEach((_, idx) => {
+                data.push({
+                    score: parseInt(document.querySelectorAll('input[type=range]')[idx].value),
+                    note: document.getElementById(`note-${idx}`).value
+                });
+            });
+            storage[currentDay] = data;
+            localStorage.setItem('balance_energy_v2', JSON.stringify(storage));
+            updateChart();
+            updateAnalysis();
+            renderDayNav();
+            showToast(`Day ${currentDay} 数据已成功存入实验舱`);
+        }
+
+        function initChart() {
+            const ctx = document.getElementById('mainChart').getContext('2d');
+            
+            // 背景色彩过渡插件 (色彩垂直过渡)
+            const bgPlugin = {
+                id: 'customCanvasBg',
+                beforeDraw: (chart) => {
+                    const {ctx, chartArea: {top, bottom, left, width, height}} = chart;
+                    ctx.save();
+                    
+                    // 创建从顶到底的色彩过渡
+                    // 10分(Top): 极佳健康绿 -> 5分(Mid): 中性白 -> 1分(Bottom): 疲劳警示红
+                    const gradient = ctx.createLinearGradient(0, top, 0, bottom);
+                    gradient.addColorStop(0, 'rgba(34, 197, 94, 0.08)');  // 绿色巅峰
+                    gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0)'); // 中性
+                    gradient.addColorStop(1, 'rgba(239, 68, 68, 0.08)');   // 红色坍塌
+                    
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(left, top, width, height);
+                    ctx.restore();
+                }
+            };
+
+            myChart = new Chart(ctx, {
+                type: 'line',
+                plugins: [bgPlugin],
+                data: {
+                    labels: TIME_LABELS,
+                    datasets: []
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    tension: 0.45,
+                    interaction: { intersect: false, mode: 'index' },
+                    scales: {
+                        y: { 
+                            min: 1, max: 10,
+                            grid: { color: '#f1f5f9' },
+                            border: { display: false },
+                            ticks: { font: { size: 10, weight: '700' }, color: '#94a3b8' }
+                        },
+                        x: { 
+                            grid: { display: false },
+                            border: { display: false },
+                            ticks: { font: { size: 10, weight: '700' }, color: '#94a3b8' }
+                        }
+                    },
+                    plugins: {
+                        legend: { position: 'bottom', labels: { usePointStyle: true, font: { size: 10, weight: 'bold' } } },
+                        tooltip: {
+                            backgroundColor: '#0f172a',
+                            padding: 15,
+                            cornerRadius: 12,
+                            callbacks: {
+                                label: (ctx) => {
+                                    const day = ctx.dataset.label.split(' ')[1];
+                                    const note = storage[day][ctx.dataIndex].note;
+                                    return ` 能量: ${ctx.parsed.y} | 事件: ${note || '未记录'}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            updateChart();
+        }
+
+        function updateChart() {
+            const colors = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899'];
+            myChart.data.datasets = Object.keys(storage).map(day => {
+                const isCurrent = currentDay == day;
+                return {
+                    label: `Day ${day}`,
+                    data: storage[day].map(d => d.score),
+                    borderColor: colors[day-1],
+                    backgroundColor: colors[day-1],
+                    borderWidth: isCurrent ? 5 : 1.5,
+                    pointRadius: isCurrent ? 6 : 0,
+                    pointHoverRadius: 10,
+                    pointBackgroundColor: '#fff',
+                    pointBorderWidth: 4,
+                    order: isCurrent ? 0 : 1,
+                    opacity: isCurrent ? 1 : 0.2
+                };
+            });
+            myChart.update();
+        }
+
+        function updateAnalysis() {
+            const recorded = Object.keys(storage).length;
+            const el = document.getElementById('analysisText');
+            if(recorded < 3) {
+                el.innerText = `数据量不足（已记录${recorded}/3天）。请继续您的测绘，系统需要更多样本来计算您的个性化能量基准。`;
+                return;
+            }
+            
+            let sums = [0,0,0,0,0];
+            Object.values(storage).forEach(d => d.forEach((p, i) => sums[i] += p.score));
+            let lowIdx = sums.indexOf(Math.min(...sums));
+            let highIdx = sums.indexOf(Math.max(...sums));
+            
+            el.innerHTML = `<strong>实验观察：</strong> 您的能量“高光时刻”通常在 <strong>${TIME_LABELS[highIdx]}</strong>，而能量“预警期”出现在 <strong>${TIME_LABELS[lowIdx]}</strong>。建议在后续《生理节律》课程中，将最高难度的任务平移至高光时刻。`;
+        }
+
+        async function downloadPDF() {
+            const { jsPDF } = window.jspdf;
+            const area = document.getElementById('capture-area');
+            const footer = document.getElementById('export-footer');
+            document.getElementById('timestamp').innerText = `生成时间：${new Date().toLocaleString()}`;
+            
+            footer.classList.remove('hidden');
+            showToast("正在加密并生成您的专属精力报告...");
+
+            const canvas = await html2canvas(area, { scale: 2, backgroundColor: '#ffffff' });
+            const imgData = canvas.toDataURL('image/png');
+            const pdf = new jsPDF('l', 'mm', 'a4');
+            const width = pdf.internal.pageSize.getWidth();
+            const height = (canvas.height * width) / canvas.width;
+            
+            pdf.addImage(imgData, 'PNG', 0, 0, width, height);
+            pdf.save(`平衡象限_精力诊断报告_${new Date().toLocaleDateString()}.pdf`);
+            
+            footer.classList.add('hidden');
+            showToast("报告导出成功，请在本地查收。");
+        }
+
+        function resetData() {
+            if(confirm('此操作将永久抹除所有测绘数据，确定吗？')) {
+                storage = {};
+                localStorage.clear();
+                location.reload();
+            }
+        }
+
+        function showToast(m) {
+            const t = document.createElement('div');
+            t.className = "fixed top-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-8 py-4 rounded-2xl shadow-2xl z-50 animate-bounce font-bold text-sm";
+            t.innerText = m;
+            document.body.appendChild(t);
+            setTimeout(() => t.remove(), 3000);
+        }
+    </script>
+</body>
+</html>
